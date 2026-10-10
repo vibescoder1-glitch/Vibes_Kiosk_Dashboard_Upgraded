@@ -56,10 +56,12 @@ export async function POST(request: Request) {
     const payload = (await request.json()) as Record<string, unknown>;
     let result: unknown = { ok: true };
 
-    // Supervisors can revoke a kiosk from the Kiosk Devices screen.
+    // Supervisors can manage kiosk registration and revocation from Kiosk Devices.
     // All other operations remain restricted to Managers.
-    const isKioskDeletion = payload.action === "deleteKiosk";
-    if (applicationUser.role !== "Manager" && !(applicationUser.role === "Supervisor" && isKioskDeletion)) {
+    const supervisorKioskActions = new Set(["registerKiosk", "regenerateKioskRegistrationCode", "deleteKiosk"]);
+    const isAllowedSupervisorKioskAction =
+      applicationUser.role === "Supervisor" && supervisorKioskActions.has(String(payload.action));
+    if (applicationUser.role !== "Manager" && !isAllowedSupervisorKioskAction) {
       return Response.json({ error: "Manager authorization is required for this operation" }, { status: 403 });
     }
 
