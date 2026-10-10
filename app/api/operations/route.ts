@@ -55,8 +55,12 @@ export async function POST(request: Request) {
     const applicationUser = await requireApplicationUser(request);
     const payload = (await request.json()) as Record<string, unknown>;
     let result: unknown = { ok: true };
-    if (applicationUser.role !== "Manager") {
-      return Response.json({ error: "Supervisor authorization is required" }, { status: 403 });
+
+    // Supervisors can revoke a kiosk from the Kiosk Devices screen.
+    // All other operations remain restricted to Managers.
+    const isKioskDeletion = payload.action === "deleteKiosk";
+    if (applicationUser.role !== "Manager" && !(applicationUser.role === "Supervisor" && isKioskDeletion)) {
+      return Response.json({ error: "Manager authorization is required for this operation" }, { status: 403 });
     }
 
     switch (payload.action) {
