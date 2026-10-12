@@ -57,13 +57,20 @@ export async function POST(request: Request) {
     const payload = (await request.json()) as Record<string, unknown>;
     let result: unknown = { ok: true };
 
-    // Supervisors can manage kiosk registration and revocation from Kiosk Devices.
-    // All other operations remain restricted to Managers.
-    const supervisorKioskActions = new Set(["registerKiosk", "regenerateKioskRegistrationCode", "deleteKiosk"]);
-    const isAllowedSupervisorKioskAction =
-      applicationUser.role === "Supervisor" && supervisorKioskActions.has(String(payload.action));
-    if (applicationUser.role !== "Manager" && !isAllowedSupervisorKioskAction) {
-      return Response.json({ error: "Manager authorization is required for this operation" }, { status: 403 });
+    // Supervisor accounts use this workspace to manage the cross-plant roster
+    // and kiosk devices. All other operational/master-data writes remain Manager-only.
+    const supervisorActions = new Set([
+      "registerKiosk",
+      "regenerateKioskRegistrationCode",
+      "deleteKiosk",
+      "addSupervisor",
+      "updateSupervisorStatus",
+      "deleteSupervisor",
+    ]);
+    const isAllowedSupervisorAction =
+      applicationUser.role === "Supervisor" && supervisorActions.has(String(payload.action));
+    if (applicationUser.role !== "Manager" && !isAllowedSupervisorAction) {
+      return Response.json({ error: "Your account is not authorized for this operation" }, { status: 403 });
     }
 
     switch (payload.action) {

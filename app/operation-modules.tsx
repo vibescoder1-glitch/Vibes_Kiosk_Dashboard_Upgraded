@@ -638,19 +638,35 @@ function SupervisorsPanel({ snapshot, onAction, notify }: Pick<SharedProps, "sna
 
   async function addSupervisorHandler(event: FormEvent) {
     event.preventDefault();
+    const name = form.name.trim();
+    if (!name) {
+      notify("Enter the supervisor's full name");
+      return;
+    }
     setSaving(true);
     try {
-      await onAction({ action: "addSupervisor", ...form });
-      notify(`${form.name} added as ${form.plant} supervisor`);
+      await onAction({ action: "addSupervisor", name, plant: form.plant });
+      notify(`${name} added as ${form.plant} supervisor`);
       setShowAdd(false);
       setForm({ name: "", plant: "Plant 1" });
-    } finally { setSaving(false); }
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Could not add supervisor");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function toggleStatus(supervisor: Supervisor) {
     const status = supervisor.status === "Active" ? "Inactive" : "Active";
-    await onAction({ action: "updateSupervisorStatus", supervisorId: supervisor.id, status });
-    notify(`${supervisor.name} marked ${status.toLowerCase()}`);
+    setSaving(true);
+    try {
+      await onAction({ action: "updateSupervisorStatus", supervisorId: supervisor.id, status });
+      notify(`${supervisor.name} marked ${status.toLowerCase()}`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Could not update supervisor status");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function deleteSupervisor(supervisor: Supervisor) {
@@ -662,6 +678,8 @@ function SupervisorsPanel({ snapshot, onAction, notify }: Pick<SharedProps, "sna
     try {
       await onAction({ action: "deleteSupervisor", supervisorId: supervisor.id });
       notify(`${supervisor.name} removed from the supervisor roster`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Could not delete supervisor");
     } finally {
       setSaving(false);
     }
@@ -683,7 +701,7 @@ function SupervisorsPanel({ snapshot, onAction, notify }: Pick<SharedProps, "sna
                 <span className="person-cell"><i>{supervisor.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</i><strong>{supervisor.name}</strong></span>
                 <span><i className={`table-status ${statusClass(supervisor.status)}`}>{supervisor.status}</i></span>
                 <span className="supervisor-actions">
-                  <button className="table-action" type="button" onClick={() => void toggleStatus(supervisor)}>{supervisor.status === "Active" ? "Deactivate" : "Activate"}</button>
+                  <button className="table-action" type="button" disabled={saving} onClick={() => void toggleStatus(supervisor)}>{supervisor.status === "Active" ? "Deactivate" : "Activate"}</button>
                   <button className="table-action danger-action" type="button" disabled={saving} onClick={() => void deleteSupervisor(supervisor)} aria-label={`Delete ${supervisor.name}`}><Trash2 size={14} /> Delete</button>
                 </span>
               </div>
