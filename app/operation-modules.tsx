@@ -653,11 +653,25 @@ function SupervisorsPanel({ snapshot, onAction, notify }: Pick<SharedProps, "sna
     notify(`${supervisor.name} marked ${status.toLowerCase()}`);
   }
 
+  async function deleteSupervisor(supervisor: Supervisor) {
+    const confirmed = window.confirm(
+      `Permanently remove ${supervisor.name} from ${supervisor.plant}? Historical production records will be retained.`,
+    );
+    if (!confirmed) return;
+    setSaving(true);
+    try {
+      await onAction({ action: "deleteSupervisor", supervisorId: supervisor.id });
+      notify(`${supervisor.name} removed from the supervisor roster`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <section className="panel data-panel">
       <div className="panel-title-row"><div><p className="eyebrow">Team roster</p><h2>Supervisors by plant</h2></div><button className="primary-action" type="button" onClick={() => setShowAdd(true)}><UserPlus size={17} />Add supervisor</button></div>
       <div className="table-toolbar">
-        <span>3 supervisors across 3 plants</span>
+        <span>{snapshot.supervisors.length} supervisor{snapshot.supervisors.length === 1 ? "" : "s"} across {PLANTS.length} plants</span>
       </div>
       {PLANTS.map((plant) => {
         const plantSupervisors = snapshot.supervisors.filter((supervisor) => supervisor.plant === plant);
@@ -668,7 +682,10 @@ function SupervisorsPanel({ snapshot, onAction, notify }: Pick<SharedProps, "sna
               <div className="data-table-row" role="row" key={supervisor.id}>
                 <span className="person-cell"><i>{supervisor.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</i><strong>{supervisor.name}</strong></span>
                 <span><i className={`table-status ${statusClass(supervisor.status)}`}>{supervisor.status}</i></span>
-                <span><button className="table-action" type="button" onClick={() => void toggleStatus(supervisor)}>{supervisor.status === "Active" ? "Deactivate" : "Activate"}</button></span>
+                <span className="supervisor-actions">
+                  <button className="table-action" type="button" onClick={() => void toggleStatus(supervisor)}>{supervisor.status === "Active" ? "Deactivate" : "Activate"}</button>
+                  <button className="table-action danger-action" type="button" disabled={saving} onClick={() => void deleteSupervisor(supervisor)} aria-label={`Delete ${supervisor.name}`}><Trash2 size={14} /> Delete</button>
+                </span>
               </div>
             )) : <div className="data-table-row" role="row"><span>No supervisors added yet</span><span /><span /></div>}
           </div>

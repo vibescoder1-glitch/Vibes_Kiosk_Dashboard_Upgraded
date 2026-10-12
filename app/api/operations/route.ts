@@ -17,6 +17,7 @@ import {
   updateMachineStatus,
   updateOperatorStatus,
   updateSupervisorStatus,
+  deleteSupervisor,
 } from "../../../lib/operations-data";
 import { getRequestCompanyUser } from "../../../lib/company-auth";
 
@@ -89,6 +90,9 @@ export async function POST(request: Request) {
         break;
       case "updateSupervisorStatus":
         await updateSupervisorStatus(payload);
+        break;
+      case "deleteSupervisor":
+        result = await deleteSupervisor(payload);
         break;
       case "updateMachineStatus":
         await updateMachineStatus(payload);
