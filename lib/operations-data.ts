@@ -1397,20 +1397,6 @@ export async function updateSupervisorStatus(input: Record<string, unknown>) {
     .bind(input.status ?? "Active", input.supervisorId).run();
 }
 
-export async function deleteSupervisor(input: Record<string, unknown>) {
-  await ensureSchema();
-  const db = await getDatabase();
-  const supervisorId = String(input.supervisorId ?? "").trim();
-  if (!supervisorId) throw new Error("Supervisor ID is required");
-  const supervisor = await db.prepare(
-    "SELECT id, name, plant FROM supervisors WHERE id = ?",
-  ).bind(supervisorId).first<{ id: string; name: string; plant: string }>();
-  if (!supervisor) throw new Error("Supervisor was not found. Refresh the roster and try again.");
-  // Tasks retain the supervisor name as text, so production history is preserved.
-  await db.prepare("DELETE FROM supervisors WHERE id = ?").bind(supervisorId).run();
-  return { id: supervisor.id, name: supervisor.name, plant: supervisor.plant, deleted: true };
-}
-
 export async function updateMachineStatus(input: Record<string, unknown>) {
   const db = await getDatabase();
   await db.prepare("UPDATE machines SET status = ?, last_updated = ? WHERE id = ?")
@@ -1422,4 +1408,26 @@ export async function syncKiosk(input: Record<string, unknown>) {
   await db.prepare(
     "UPDATE kiosk_devices SET status = 'Online', last_seen = ?, pending_sync = 0 WHERE id = ?",
   ).bind(nowIso(), input.kioskId).run();
+}
+
+export async function deleteSupervisor(input: Record<string, unknown>) {
+  await ensureSchema();
+
+  const db = await getDatabase();
+  const supervisorId = String(input.supervisorId ?? "").trim();
+
+  if (!supervisorId) {
+    throw new Error("Supervisor ID is required");
+  }
+
+  const result = await db
+    .prepare("DELETE FROM supervisors WHERE id = ?")
+    .bind(supervisorId)
+    .run();
+
+  if (!result.meta.changes) {
+    throw new Error("Supervisor was not found");
+  }
+
+  return { deleted: supervisorId };
 }

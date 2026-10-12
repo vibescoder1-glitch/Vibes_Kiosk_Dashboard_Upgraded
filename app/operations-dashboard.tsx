@@ -99,8 +99,6 @@ export type ProductionEntry = {
   shift: string;
   product: string;
   mold_no: string;
-  part_number: string;
-  family_number: string;
   colour: string;
   rubber_compound: string;
   compound_received_kg: number;

@@ -508,7 +508,7 @@ export function HistoryView({ snapshot, plantFilter }: Pick<SharedProps, "snapsh
     const matchesPlant = plantFilter === "All Plants" || entry.plant === plantFilter;
     const matchesShift = shift === "All Shifts" || entry.shift === shift;
     const query = search.trim().toLowerCase();
-    return matchesPlant && matchesShift && (!query || `${entry.entry_code} ${entry.operator_name} ${entry.machine_no} ${entry.product} ${entry.mold_no} ${entry.part_number} ${entry.family_number} ${entry.colour} ${entry.batch_no}`.toLowerCase().includes(query));
+    return matchesPlant && matchesShift && (!query || `${entry.entry_code} ${entry.operator_name} ${entry.machine_no} ${entry.product} ${entry.mold_no} ${entry.colour} ${entry.batch_no}`.toLowerCase().includes(query));
   });
 
   return (
@@ -516,9 +516,9 @@ export function HistoryView({ snapshot, plantFilter }: Pick<SharedProps, "snapsh
       <ModuleHeader eyebrow="Traceability" title="Production history" description="Review kiosk submissions, quantities, rejection, batch details and sync source." />
       <section className="panel data-panel">
         <div className="table-toolbar"><label className="search-control"><Search size={16} /><input placeholder="Search entry, operator, product, mold, colour or batch" value={search} onChange={(event) => setSearch(event.target.value)} /></label><label className="small-select"><ListFilter size={15} /><select value={shift} onChange={(event) => setShift(event.target.value)}><option>All Shifts</option>{SHIFTS.map((item) => <option key={item}>{item}</option>)}</select></label><span>{entries.length} entries</span></div>
-        {entries.length ? <div className="data-table history-table" role="table" aria-label="Production history"><div className="data-table-head" role="row"><span>Entry</span><span>Date & time</span><span>Plant / Machine</span><span>Operator</span><span>Product / Batch</span><span>Part Number</span><span>Family Number</span><span>OK</span><span>Rejected</span><span>Hours</span><span>Source</span></div>{entries.map((entry) => <button className="data-table-row clickable" role="row" type="button" key={entry.id} onClick={() => setSelectedEntry(entry)}><span className="strong-cell"><History size={15} />{entry.entry_code}</span><span>{formatDate(entry.created_at, true)}</span><span>{entry.plant} · {entry.machine_no}</span><span>{entry.operator_name}</span><span>{entry.product}<small>{entry.colour ? `${entry.colour} · ` : ""}Batch {entry.batch_no}</small></span><span className="traceability-cell">{entry.part_number || "—"}</span><span className="traceability-cell">{entry.family_number || "—"}</span><span className="positive-number">{formatNumber(entry.ok_qty)}</span><span className={entry.rejection_qty > 0 ? "negative-number" : "positive-number"}>{entry.rejection_qty}</span><span>{Number(entry.operator_hours ?? 8).toFixed(2)} h</span><span><i className="source-badge">{entry.synced_from}</i></span></button>)}</div> : <EmptyState title="No matching entries" detail="Try a different operator, batch, shift or plant filter." />}
+        {entries.length ? <div className="data-table history-table" role="table" aria-label="Production history"><div className="data-table-head" role="row"><span>Entry</span><span>Date & time</span><span>Plant / Machine</span><span>Operator</span><span>Product / Batch</span><span>OK</span><span>Rejected</span><span>Hours</span><span>Source</span></div>{entries.map((entry) => <button className="data-table-row clickable" role="row" type="button" key={entry.id} onClick={() => setSelectedEntry(entry)}><span className="strong-cell"><History size={15} />{entry.entry_code}</span><span>{formatDate(entry.created_at, true)}</span><span>{entry.plant} · {entry.machine_no}</span><span>{entry.operator_name}</span><span>{entry.product}<small>{entry.colour ? `${entry.colour} · ` : ""}Batch {entry.batch_no}</small></span><span className="positive-number">{formatNumber(entry.ok_qty)}</span><span className={entry.rejection_qty > 0 ? "negative-number" : "positive-number"}>{entry.rejection_qty}</span><span>{Number(entry.operator_hours ?? 8).toFixed(2)} h</span><span><i className="source-badge">{entry.synced_from}</i></span></button>)}</div> : <EmptyState title="No matching entries" detail="Try a different operator, batch, shift or plant filter." />}
       </section>
-      {selectedEntry ? <Modal title={selectedEntry.entry_code} onClose={() => setSelectedEntry(null)} wide><div className="entry-detail"><div className="entry-hero"><CheckCircle2 size={30} /><div><strong>Production entry synced</strong><span>{formatDate(selectedEntry.created_at, true)} · {selectedEntry.synced_from}</span></div></div><div className="detail-grid four"><div><small>Plant / Machine</small><strong>{selectedEntry.plant} · {selectedEntry.machine_no}</strong></div><div><small>Operator</small><strong>{selectedEntry.operator_name}</strong></div><div><small>Shift</small><strong>{selectedEntry.shift}</strong></div><div><small>Product</small><strong>{selectedEntry.product}</strong></div><div><small>Mold number</small><strong>{selectedEntry.mold_no}</strong></div><div><small>Part Number</small><strong>{selectedEntry.part_number || "Not recorded"}</strong></div><div><small>Family Number</small><strong>{selectedEntry.family_number || "Not recorded"}</strong></div><div><small>Colour</small><strong>{selectedEntry.colour || "Not specified"}</strong></div><div><small>Rubber Compound</small><strong>{selectedEntry.rubber_compound || "Not mapped"}</strong></div><div><small>Compound Received / Used / Balance</small><strong>{selectedEntry.compound_received_kg ?? 0} / {selectedEntry.compound_used_kg ?? 0} / {selectedEntry.compound_balance_kg ?? 0} kg</strong></div><div><small>Batch number</small><strong>{selectedEntry.batch_no}</strong></div><div><small>Number of shots</small><strong>{formatNumber(selectedEntry.shot_count || 0)}</strong></div><div><small>Actual weight</small><strong>{Number(selectedEntry.actual_weight_grams || 0).toFixed(1)} {selectedEntry.weight_unit === "count" ? "count" : "g"}</strong></div><div><small>Running cavities</small><strong>{formatNumber(selectedEntry.running_cavities || 0)}</strong></div><div><small>Operator hours</small><strong>{Number(selectedEntry.operator_hours ?? 8).toFixed(2)} hours</strong></div><div><small>OK quantity</small><strong className="positive-number">{formatNumber(selectedEntry.ok_qty)}</strong></div><div><small>Rejected / Scrap</small><strong>{selectedEntry.rejection_qty} / {selectedEntry.scrap_qty}</strong></div><div><small>Rejection rate</small><strong>{((Number(selectedEntry.rejection_qty) / Math.max(1, Number(selectedEntry.ok_qty) + Number(selectedEntry.rejection_qty) + Number(selectedEntry.scrap_qty))) * 100).toFixed(1)}%</strong></div><div><small>Downtime</small><strong>{selectedEntry.downtime_minutes} minutes</strong></div><div><small>Reason</small><strong>{selectedEntry.downtime_reason || "None"}</strong></div></div>{selectedEntry.remarks ? <div className="remark-box"><small>Remarks</small><p>{selectedEntry.remarks}</p></div> : null}</div></Modal> : null}
+      {selectedEntry ? <Modal title={selectedEntry.entry_code} onClose={() => setSelectedEntry(null)} wide><div className="entry-detail"><div className="entry-hero"><CheckCircle2 size={30} /><div><strong>Production entry synced</strong><span>{formatDate(selectedEntry.created_at, true)} · {selectedEntry.synced_from}</span></div></div><div className="detail-grid four"><div><small>Plant / Machine</small><strong>{selectedEntry.plant} · {selectedEntry.machine_no}</strong></div><div><small>Operator</small><strong>{selectedEntry.operator_name}</strong></div><div><small>Shift</small><strong>{selectedEntry.shift}</strong></div><div><small>Product</small><strong>{selectedEntry.product}</strong></div><div><small>Mold number</small><strong>{selectedEntry.mold_no}</strong></div><div><small>Colour</small><strong>{selectedEntry.colour || "Not specified"}</strong></div><div><small>Rubber Compound</small><strong>{selectedEntry.rubber_compound || "Not mapped"}</strong></div><div><small>Compound Received / Used / Balance</small><strong>{selectedEntry.compound_received_kg ?? 0} / {selectedEntry.compound_used_kg ?? 0} / {selectedEntry.compound_balance_kg ?? 0} kg</strong></div><div><small>Batch number</small><strong>{selectedEntry.batch_no}</strong></div><div><small>Number of shots</small><strong>{formatNumber(selectedEntry.shot_count || 0)}</strong></div><div><small>Actual weight</small><strong>{Number(selectedEntry.actual_weight_grams || 0).toFixed(1)} {selectedEntry.weight_unit === "count" ? "count" : "g"}</strong></div><div><small>Running cavities</small><strong>{formatNumber(selectedEntry.running_cavities || 0)}</strong></div><div><small>Operator hours</small><strong>{Number(selectedEntry.operator_hours ?? 8).toFixed(2)} hours</strong></div><div><small>OK quantity</small><strong className="positive-number">{formatNumber(selectedEntry.ok_qty)}</strong></div><div><small>Rejected / Scrap</small><strong>{selectedEntry.rejection_qty} / {selectedEntry.scrap_qty}</strong></div><div><small>Rejection rate</small><strong>{((Number(selectedEntry.rejection_qty) / Math.max(1, Number(selectedEntry.ok_qty) + Number(selectedEntry.rejection_qty) + Number(selectedEntry.scrap_qty))) * 100).toFixed(1)}%</strong></div><div><small>Downtime</small><strong>{selectedEntry.downtime_minutes} minutes</strong></div><div><small>Reason</small><strong>{selectedEntry.downtime_reason || "None"}</strong></div></div>{selectedEntry.remarks ? <div className="remark-box"><small>Remarks</small><p>{selectedEntry.remarks}</p></div> : null}</div></Modal> : null}
     </div>
   );
 }
@@ -631,72 +631,212 @@ async function readCsv(event: ChangeEvent<HTMLInputElement>) {
   return { name: file.name, rows: parseCsv(await file.text()) };
 }
 
-function SupervisorsPanel({ snapshot, onAction, notify }: Pick<SharedProps, "snapshot" | "onAction" | "notify">) {
+
+function SupervisorsPanel({
+  snapshot,
+  onAction,
+  notify,
+}: Pick<SharedProps, "snapshot" | "onAction" | "notify">) {
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingSupervisorId, setDeletingSupervisorId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", plant: "Plant 1" });
 
   async function addSupervisorHandler(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
+
     try {
       await onAction({ action: "addSupervisor", ...form });
       notify(`${form.name} added as ${form.plant} supervisor`);
       setShowAdd(false);
       setForm({ name: "", plant: "Plant 1" });
-    } finally { setSaving(false); }
-  }
-
-  async function toggleStatus(supervisor: Supervisor) {
-    const status = supervisor.status === "Active" ? "Inactive" : "Active";
-    await onAction({ action: "updateSupervisorStatus", supervisorId: supervisor.id, status });
-    notify(`${supervisor.name} marked ${status.toLowerCase()}`);
-  }
-
-  async function deleteSupervisor(supervisor: Supervisor) {
-    const confirmed = window.confirm(
-      `Permanently remove ${supervisor.name} from ${supervisor.plant}? Historical production records will be retained.`,
-    );
-    if (!confirmed) return;
-    setSaving(true);
-    try {
-      await onAction({ action: "deleteSupervisor", supervisorId: supervisor.id });
-      notify(`${supervisor.name} removed from the supervisor roster`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Failed to add supervisor");
     } finally {
       setSaving(false);
     }
   }
 
+  async function toggleStatus(supervisor: Supervisor) {
+    const status = supervisor.status === "Active" ? "Inactive" : "Active";
+
+    try {
+      await onAction({
+        action: "updateSupervisorStatus",
+        supervisorId: supervisor.id,
+        status,
+      });
+
+      notify(`${supervisor.name} marked ${status.toLowerCase()}`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Failed to update supervisor");
+    }
+  }
+
+  async function deleteSupervisorHandler(supervisor: Supervisor) {
+    const confirmed = window.confirm(
+      `Delete supervisor ${supervisor.name}? This action cannot be undone.`,
+    );
+
+    if (!confirmed) return;
+
+    setDeletingSupervisorId(supervisor.id);
+
+    try {
+      await onAction({
+        action: "deleteSupervisor",
+        supervisorId: supervisor.id,
+      });
+
+      notify(`${supervisor.name} deleted successfully`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Failed to delete supervisor");
+    } finally {
+      setDeletingSupervisorId(null);
+    }
+  }
+
   return (
     <section className="panel data-panel">
-      <div className="panel-title-row"><div><p className="eyebrow">Team roster</p><h2>Supervisors by plant</h2></div><button className="primary-action" type="button" onClick={() => setShowAdd(true)}><UserPlus size={17} />Add supervisor</button></div>
-      <div className="table-toolbar">
-        <span>{snapshot.supervisors.length} supervisor{snapshot.supervisors.length === 1 ? "" : "s"} across {PLANTS.length} plants</span>
+      <div className="panel-title-row">
+        <div>
+          <p className="eyebrow">Team roster</p>
+          <h2>Supervisors by plant</h2>
+        </div>
+        <button
+          className="primary-action"
+          type="button"
+          onClick={() => setShowAdd(true)}
+        >
+          <UserPlus size={17} />
+          Add supervisor
+        </button>
       </div>
+
+      <div className="table-toolbar">
+        <span>{snapshot.supervisors.length} supervisors across 3 plants</span>
+      </div>
+
       {PLANTS.map((plant) => {
-        const plantSupervisors = snapshot.supervisors.filter((supervisor) => supervisor.plant === plant);
+        const plantSupervisors = snapshot.supervisors.filter(
+          (supervisor) => supervisor.plant === plant,
+        );
+
         return (
-          <div key={plant} className="data-table supervisors-table" role="table" aria-label={`Supervisors for ${plant}`}>
-            <div className="data-table-head" role="row"><span>{plant}</span><span>Status</span><span>Action</span></div>
-            {plantSupervisors.length ? plantSupervisors.map((supervisor) => (
-              <div className="data-table-row" role="row" key={supervisor.id}>
-                <span className="person-cell"><i>{supervisor.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</i><strong>{supervisor.name}</strong></span>
-                <span><i className={`table-status ${statusClass(supervisor.status)}`}>{supervisor.status}</i></span>
-                <span className="supervisor-actions">
-                  <button className="table-action" type="button" onClick={() => void toggleStatus(supervisor)}>{supervisor.status === "Active" ? "Deactivate" : "Activate"}</button>
-                  <button className="table-action danger-action" type="button" disabled={saving} onClick={() => void deleteSupervisor(supervisor)} aria-label={`Delete ${supervisor.name}`}><Trash2 size={14} /> Delete</button>
-                </span>
+          <div
+            key={plant}
+            className="data-table supervisors-table"
+            role="table"
+            aria-label={`Supervisors for ${plant}`}
+          >
+            <div className="data-table-head" role="row">
+              <span>{plant}</span>
+              <span>Status</span>
+              <span>Action</span>
+            </div>
+
+            {plantSupervisors.length ? (
+              plantSupervisors.map((supervisor) => (
+                <div className="data-table-row" role="row" key={supervisor.id}>
+                  <span className="person-cell">
+                    <i>
+                      {supervisor.name
+                        .split(" ")
+                        .map((part) => part[0])
+                        .slice(0, 2)
+                        .join("")}
+                    </i>
+                    <strong>{supervisor.name}</strong>
+                  </span>
+
+                  <span>
+                    <i className={`table-status ${statusClass(supervisor.status)}`}>
+                      {supervisor.status}
+                    </i>
+                  </span>
+
+                  <span>
+                    <button
+                      className="table-action"
+                      type="button"
+                      disabled={deletingSupervisorId === supervisor.id}
+                      onClick={() => void toggleStatus(supervisor)}
+                    >
+                      {supervisor.status === "Active" ? "Deactivate" : "Activate"}
+                    </button>
+
+                    <button
+                      className="table-action"
+                      type="button"
+                      disabled={deletingSupervisorId === supervisor.id}
+                      onClick={() => void deleteSupervisorHandler(supervisor)}
+                    >
+                      {deletingSupervisorId === supervisor.id
+                        ? "Deleting..."
+                        : "Delete"}
+                    </button>
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="data-table-row" role="row">
+                <span>No supervisors added yet</span>
+                <span />
+                <span />
               </div>
-            )) : <div className="data-table-row" role="row"><span>No supervisors added yet</span><span /><span /></div>}
+            )}
           </div>
         );
       })}
+
       {showAdd ? (
         <Modal title="Add supervisor" onClose={() => setShowAdd(false)}>
           <form className="form-stack" onSubmit={addSupervisorHandler}>
-            <label className="form-field"><span>Full name</span><input required placeholder="e.g. Rekha Deshpande" value={form.name} onChange={(event) => setForm((value) => ({ ...value, name: event.target.value }))} /></label>
-            <label className="form-field"><span>Plant</span><select value={form.plant} onChange={(event) => setForm((value) => ({ ...value, plant: event.target.value }))}>{PLANTS.map((plant) => <option key={plant}>{plant}</option>)}</select></label>
-            <div className="modal-actions"><button className="secondary-action" type="button" onClick={() => setShowAdd(false)}>Cancel</button><button className="primary-action" type="submit" disabled={saving}>{saving ? <RefreshCw className="spin" size={16} /> : <Plus size={16} />}Add supervisor</button></div>
+            <label className="form-field">
+              <span>Full name</span>
+              <input
+                required
+                placeholder="e.g. Rekha Deshpande"
+                value={form.name}
+                onChange={(event) =>
+                  setForm((value) => ({ ...value, name: event.target.value }))
+                }
+              />
+            </label>
+
+            <label className="form-field">
+              <span>Plant</span>
+              <select
+                value={form.plant}
+                onChange={(event) =>
+                  setForm((value) => ({ ...value, plant: event.target.value }))
+                }
+              >
+                {PLANTS.map((plant) => (
+                  <option key={plant}>{plant}</option>
+                ))}
+              </select>
+            </label>
+
+            <div className="modal-actions">
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={() => setShowAdd(false)}
+              >
+                Cancel
+              </button>
+
+              <button className="primary-action" type="submit" disabled={saving}>
+                {saving ? (
+                  <RefreshCw className="spin" size={16} />
+                ) : (
+                  <Plus size={16} />
+                )}
+                Add supervisor
+              </button>
+            </div>
           </form>
         </Modal>
       ) : null}

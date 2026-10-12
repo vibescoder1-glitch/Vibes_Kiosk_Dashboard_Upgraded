@@ -41,7 +41,7 @@ export async function GET(request: Request) {
     return Response.json({
       ...snapshot,
       users: [],
-      faceEnrollments: applicationUser.role === "Manager" ? await getFaceEnrollmentStatuses() : [],
+      faceEnrollments: applicationUser.role === "Supervisor" ? await getFaceEnrollmentStatuses() : [],
     });
   } catch (error) {
     const message = errorMessage(error);
@@ -56,14 +56,8 @@ export async function POST(request: Request) {
     const applicationUser = await requireApplicationUser(request);
     const payload = (await request.json()) as Record<string, unknown>;
     let result: unknown = { ok: true };
-
-    // Supervisors can manage kiosk registration and revocation from Kiosk Devices.
-    // All other operations remain restricted to Managers.
-    const supervisorKioskActions = new Set(["registerKiosk", "regenerateKioskRegistrationCode", "deleteKiosk"]);
-    const isAllowedSupervisorKioskAction =
-      applicationUser.role === "Supervisor" && supervisorKioskActions.has(String(payload.action));
-    if (applicationUser.role !== "Manager" && !isAllowedSupervisorKioskAction) {
-      return Response.json({ error: "Manager authorization is required for this operation" }, { status: 403 });
+    if (applicationUser.role !== "Supervisor") {
+      return Response.json({ error: "Supervisor authorization is required" }, { status: 403 });
     }
 
     switch (payload.action) {
@@ -87,9 +81,6 @@ export async function POST(request: Request) {
         break;
       case "addSupervisor":
         result = await addSupervisor(payload);
-        break;
-      case "updateSupervisorStatus":
-        await updateSupervisorStatus(payload);
         break;
       case "deleteSupervisor":
         result = await deleteSupervisor(payload);
@@ -131,3 +122,4 @@ export async function POST(request: Request) {
     return Response.json({ error: message }, { status });
   }
 }
+
