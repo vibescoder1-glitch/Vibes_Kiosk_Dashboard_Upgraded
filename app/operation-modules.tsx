@@ -505,16 +505,56 @@ export function OperatorsView({ snapshot, plantFilter, onAction, notify }: Share
   );
 }
 
-export function HistoryView({ snapshot, plantFilter }: Pick<SharedProps, "snapshot" | "plantFilter">) {
+export function HistoryView({ snapshot, plantFilter, onAction, notify }: Pick<SharedProps, "snapshot" | "plantFilter" | "onAction" | "notify">) {
   const [search, setSearch] = useState("");
   const [shift, setShift] = useState("All Shifts");
   const [selectedEntry, setSelectedEntry] = useState<ProductionEntry | null>(null);
+  const [editingEntry, setEditingEntry] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editForm, setEditForm] = useState<Record<string, string>>({});
   const entries = snapshot.entries.filter((entry) => {
     const matchesPlant = plantFilter === "All Plants" || entry.plant === plantFilter;
     const matchesShift = shift === "All Shifts" || entry.shift === shift;
     const query = search.trim().toLowerCase();
     return matchesPlant && matchesShift && (!query || `${entry.entry_code} ${entry.operator_name} ${entry.machine_no} ${entry.product} ${entry.mold_no} ${entry.colour} ${entry.batch_no}`.toLowerCase().includes(query));
   });
+
+  function beginEdit(entry: ProductionEntry) {
+    setEditForm({
+      colour: entry.colour ?? "",
+      batchNo: entry.batch_no ?? "",
+      shotCount: String(entry.shot_count ?? 0),
+      actualWeightGrams: String(entry.actual_weight_grams ?? 0),
+      runningCavities: String(entry.running_cavities ?? 0),
+      operatorHours: String(entry.operator_hours ?? 8),
+      okQty: String(entry.ok_qty ?? 0),
+      rejectionQty: String(entry.rejection_qty ?? 0),
+      scrapQty: String(entry.scrap_qty ?? 0),
+      downtimeMinutes: String(entry.downtime_minutes ?? 0),
+      downtimeReason: entry.downtime_reason ?? "",
+      remarks: entry.remarks ?? "",
+      compoundReceivedKg: String(entry.compound_received_kg ?? 0),
+      compoundUsedKg: String(entry.compound_used_kg ?? 0),
+      compoundBalanceKg: String(entry.compound_balance_kg ?? 0),
+    });
+    setEditingEntry(true);
+  }
+
+  async function saveEdit(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedEntry) return;
+    setSavingEdit(true);
+    try {
+      await onAction({ action: "updateProductionEntry", entryId: selectedEntry.id, ...editForm });
+      notify(`Production entry ${selectedEntry.entry_code} updated. Reports will use the corrected saved values.`);
+      setEditingEntry(false);
+      setSelectedEntry(null);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Could not update production entry");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
 
   return (
     <div className="view-stack">
@@ -523,7 +563,28 @@ export function HistoryView({ snapshot, plantFilter }: Pick<SharedProps, "snapsh
         <div className="table-toolbar"><label className="search-control"><Search size={16} /><input placeholder="Search entry, operator, product, mold, colour or batch" value={search} onChange={(event) => setSearch(event.target.value)} /></label><label className="small-select"><ListFilter size={15} /><select value={shift} onChange={(event) => setShift(event.target.value)}><option>All Shifts</option>{SHIFTS.map((item) => <option key={item}>{item}</option>)}</select></label><span>{entries.length} entries</span></div>
         {entries.length ? <div className="data-table history-table" role="table" aria-label="Production history"><div className="data-table-head" role="row"><span>Entry</span><span>Date & time</span><span>Plant / Machine</span><span>Operator</span><span>Product / Batch</span><span>OK</span><span>Rejected</span><span>Hours</span><span>Source</span></div>{entries.map((entry) => <button className="data-table-row clickable" role="row" type="button" key={entry.id} onClick={() => setSelectedEntry(entry)}><span className="strong-cell"><History size={15} />{entry.entry_code}</span><span>{formatDate(entry.created_at, true)}</span><span>{entry.plant} · {entry.machine_no}</span><span>{entry.operator_name}</span><span>{entry.product}<small>{entry.colour ? `${entry.colour} · ` : ""}Batch {entry.batch_no}</small></span><span className="positive-number">{formatNumber(entry.ok_qty)}</span><span className={entry.rejection_qty > 0 ? "negative-number" : "positive-number"}>{entry.rejection_qty}</span><span>{Number(entry.operator_hours ?? 8).toFixed(2)} h</span><span><i className="source-badge">{entry.synced_from}</i></span></button>)}</div> : <EmptyState title="No matching entries" detail="Try a different operator, batch, shift or plant filter." />}
       </section>
-      {selectedEntry ? <Modal title={selectedEntry.entry_code} onClose={() => setSelectedEntry(null)} wide><div className="entry-detail"><div className="entry-hero"><CheckCircle2 size={30} /><div><strong>Production entry synced</strong><span>{formatDate(selectedEntry.created_at, true)} · {selectedEntry.synced_from}</span></div></div><div className="detail-grid four"><div><small>Plant / Machine</small><strong>{selectedEntry.plant} · {selectedEntry.machine_no}</strong></div><div><small>Operator</small><strong>{selectedEntry.operator_name}</strong></div><div><small>Shift</small><strong>{selectedEntry.shift}</strong></div><div><small>Product</small><strong>{selectedEntry.product}</strong></div><div><small>Mold number</small><strong>{selectedEntry.mold_no}</strong></div><div><small>Colour</small><strong>{selectedEntry.colour || "Not specified"}</strong></div><div><small>Rubber Compound</small><strong>{selectedEntry.rubber_compound || "Not mapped"}</strong></div><div><small>Compound Received / Used / Balance</small><strong>{selectedEntry.compound_received_kg ?? 0} / {selectedEntry.compound_used_kg ?? 0} / {selectedEntry.compound_balance_kg ?? 0} kg</strong></div><div><small>Batch number</small><strong>{selectedEntry.batch_no}</strong></div><div><small>Number of shots</small><strong>{formatNumber(selectedEntry.shot_count || 0)}</strong></div><div><small>Actual weight</small><strong>{Number(selectedEntry.actual_weight_grams || 0).toFixed(1)} {selectedEntry.weight_unit === "count" ? "count" : "g"}</strong></div><div><small>Running cavities</small><strong>{formatNumber(selectedEntry.running_cavities || 0)}</strong></div><div><small>Operator hours</small><strong>{Number(selectedEntry.operator_hours ?? 8).toFixed(2)} hours</strong></div><div><small>OK quantity</small><strong className="positive-number">{formatNumber(selectedEntry.ok_qty)}</strong></div><div><small>Rejected / Scrap</small><strong>{selectedEntry.rejection_qty} / {selectedEntry.scrap_qty}</strong></div><div><small>Rejection rate</small><strong>{((Number(selectedEntry.rejection_qty) / Math.max(1, Number(selectedEntry.ok_qty) + Number(selectedEntry.rejection_qty) + Number(selectedEntry.scrap_qty))) * 100).toFixed(1)}%</strong></div><div><small>Downtime</small><strong>{selectedEntry.downtime_minutes} minutes</strong></div><div><small>Reason</small><strong>{selectedEntry.downtime_reason || "None"}</strong></div></div>{selectedEntry.remarks ? <div className="remark-box"><small>Remarks</small><p>{selectedEntry.remarks}</p></div> : null}</div></Modal> : null}
+      {selectedEntry ? <Modal title={selectedEntry.entry_code} onClose={() => setSelectedEntry(null)} wide><div className="entry-detail"><div className="entry-hero"><CheckCircle2 size={30} /><div><strong>Production entry synced</strong><span>{formatDate(selectedEntry.created_at, true)} · {selectedEntry.synced_from}</span></div></div><div className="detail-grid four"><div><small>Plant / Machine</small><strong>{selectedEntry.plant} · {selectedEntry.machine_no}</strong></div><div><small>Operator</small><strong>{selectedEntry.operator_name}</strong></div><div><small>Shift</small><strong>{selectedEntry.shift}</strong></div><div><small>Product</small><strong>{selectedEntry.product}</strong></div><div><small>Mold number</small><strong>{selectedEntry.mold_no}</strong></div><div><small>Colour</small><strong>{selectedEntry.colour || "Not specified"}</strong></div><div><small>Rubber Compound</small><strong>{selectedEntry.rubber_compound || "Not mapped"}</strong></div><div><small>Compound Received / Used / Balance</small><strong>{selectedEntry.compound_received_kg ?? 0} / {selectedEntry.compound_used_kg ?? 0} / {selectedEntry.compound_balance_kg ?? 0} kg</strong></div><div><small>Batch number</small><strong>{selectedEntry.batch_no}</strong></div><div><small>Number of shots</small><strong>{formatNumber(selectedEntry.shot_count || 0)}</strong></div><div><small>Actual weight</small><strong>{Number(selectedEntry.actual_weight_grams || 0).toFixed(1)} {selectedEntry.weight_unit === "count" ? "count" : "g"}</strong></div><div><small>Running cavities</small><strong>{formatNumber(selectedEntry.running_cavities || 0)}</strong></div><div><small>Operator hours</small><strong>{Number(selectedEntry.operator_hours ?? 8).toFixed(2)} hours</strong></div><div><small>OK quantity</small><strong className="positive-number">{formatNumber(selectedEntry.ok_qty)}</strong></div><div><small>Rejected / Scrap</small><strong>{selectedEntry.rejection_qty} / {selectedEntry.scrap_qty}</strong></div><div><small>Rejection rate</small><strong>{((Number(selectedEntry.rejection_qty) / Math.max(1, Number(selectedEntry.ok_qty) + Number(selectedEntry.rejection_qty) + Number(selectedEntry.scrap_qty))) * 100).toFixed(1)}%</strong></div><div><small>Downtime</small><strong>{selectedEntry.downtime_minutes} minutes</strong></div><div><small>Reason</small><strong>{selectedEntry.downtime_reason || "None"}</strong></div></div>{selectedEntry.remarks ? <div className="remark-box"><small>Remarks</small><p>{selectedEntry.remarks}</p></div> : null}<div className="modal-actions"><button className="secondary-action" type="button" onClick={() => beginEdit(selectedEntry)}><Pencil size={15} /> Edit entry</button></div></div></Modal> : null}
+      {selectedEntry && editingEntry ? <Modal title={`Edit ${selectedEntry.entry_code}`} onClose={() => setEditingEntry(false)} wide><form className="form-stack" onSubmit={saveEdit}>
+        <p>Corrections are saved to the database and recorded in the audit log with the signed-in supervisor.</p>
+        <div className="form-grid two">
+          <label className="form-field"><span>Batch number</span><input required value={editForm.batchNo ?? ""} onChange={(e) => setEditForm(v => ({...v,batchNo:e.target.value}))} /></label>
+          <label className="form-field"><span>Colour</span><input value={editForm.colour ?? ""} onChange={(e) => setEditForm(v => ({...v,colour:e.target.value}))} /></label>
+          <label className="form-field"><span>Shot count</span><input type="number" min="0" step="1" value={editForm.shotCount ?? "0"} onChange={(e) => setEditForm(v => ({...v,shotCount:e.target.value}))} /></label>
+          <label className="form-field"><span>Actual weight (g)</span><input type="number" min="0" step="0.1" value={editForm.actualWeightGrams ?? "0"} onChange={(e) => setEditForm(v => ({...v,actualWeightGrams:e.target.value}))} /></label>
+          <label className="form-field"><span>Running cavities</span><input type="number" min="0" step="1" value={editForm.runningCavities ?? "0"} onChange={(e) => setEditForm(v => ({...v,runningCavities:e.target.value}))} /></label>
+          <label className="form-field"><span>Operator hours</span><input type="number" min="0" max="24" step="0.25" value={editForm.operatorHours ?? "8"} onChange={(e) => setEditForm(v => ({...v,operatorHours:e.target.value}))} /></label>
+          <label className="form-field"><span>OK quantity</span><input type="number" min="0" step="1" value={editForm.okQty ?? "0"} onChange={(e) => setEditForm(v => ({...v,okQty:e.target.value}))} /></label>
+          <label className="form-field"><span>Rejected quantity</span><input type="number" min="0" step="1" value={editForm.rejectionQty ?? "0"} onChange={(e) => setEditForm(v => ({...v,rejectionQty:e.target.value}))} /></label>
+          <label className="form-field"><span>Scrap quantity</span><input type="number" min="0" step="1" value={editForm.scrapQty ?? "0"} onChange={(e) => setEditForm(v => ({...v,scrapQty:e.target.value}))} /></label>
+          <label className="form-field"><span>Downtime (minutes)</span><input type="number" min="0" step="1" value={editForm.downtimeMinutes ?? "0"} onChange={(e) => setEditForm(v => ({...v,downtimeMinutes:e.target.value}))} /></label>
+          <label className="form-field"><span>Compound received (kg)</span><input type="number" min="0" step="0.001" value={editForm.compoundReceivedKg ?? "0"} onChange={(e) => setEditForm(v => ({...v,compoundReceivedKg:e.target.value}))} /></label>
+          <label className="form-field"><span>Compound used (kg)</span><input type="number" min="0" step="0.001" value={editForm.compoundUsedKg ?? "0"} onChange={(e) => setEditForm(v => ({...v,compoundUsedKg:e.target.value}))} /></label>
+          <label className="form-field"><span>Compound balance (kg)</span><input type="number" min="0" step="0.001" value={editForm.compoundBalanceKg ?? "0"} onChange={(e) => setEditForm(v => ({...v,compoundBalanceKg:e.target.value}))} /></label>
+          <label className="form-field"><span>Downtime reason</span><input value={editForm.downtimeReason ?? ""} onChange={(e) => setEditForm(v => ({...v,downtimeReason:e.target.value}))} /></label>
+        </div>
+        <label className="form-field"><span>Remarks</span><textarea rows={3} value={editForm.remarks ?? ""} onChange={(e) => setEditForm(v => ({...v,remarks:e.target.value}))} /></label>
+        <div className="modal-actions"><button className="secondary-action" type="button" onClick={() => setEditingEntry(false)}>Cancel</button><button className="primary-action" type="submit" disabled={savingEdit}>{savingEdit ? <RefreshCw className="spin" size={16} /> : <Check size={16} />}Save correction</button></div>
+      </form></Modal> : null}
     </div>
   );
 }
