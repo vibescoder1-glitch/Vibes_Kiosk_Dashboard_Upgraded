@@ -445,7 +445,9 @@ export function OperatorsView({ snapshot, plantFilter, onAction, notify }: Share
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: "", employeeCode: "", plant: plantFilter === "All Plants" ? "Plant 1" : plantFilter, shift: "Morning", skillLevel: "L1" });
-  const operators = snapshot.operators.filter((operator) => {
+  // Archived operators are removed from day-to-day management, while their production history remains intact.
+  const activeOperators = snapshot.operators.filter((operator) => operator.status !== "Archived");
+  const operators = activeOperators.filter((operator) => {
     const matchesPlant = plantFilter === "All Plants" || operator.plant === plantFilter;
     const query = search.trim().toLowerCase();
     return matchesPlant && (!query || `${operator.name} ${operator.employee_code}`.toLowerCase().includes(query));
@@ -462,26 +464,29 @@ export function OperatorsView({ snapshot, plantFilter, onAction, notify }: Share
     } finally { setSaving(false); }
   }
 
-  async function toggleStatus(operator: Operator) {
-    const status = operator.status === "Active" ? "Off Shift" : "Active";
-    await onAction({ action: "updateOperatorStatus", operatorId: operator.id, status });
-    notify(`${operator.name} marked ${status.toLowerCase()}`);
+  async function removeOperator(operator: Operator) {
+    const confirmed = window.confirm(
+      `Remove ${operator.name} from the active operator list? Existing production history will be preserved.`,
+    );
+    if (!confirmed) return;
+    await onAction({ action: "updateOperatorStatus", operatorId: operator.id, status: "Archived" });
+    notify(`${operator.name} removed from active operators. Production history is preserved.`);
   }
 
   return (
     <div className="view-stack">
       <ModuleHeader eyebrow="Workforce management" title="Operators" description="Manage operator availability, plant allocation, shift and skill level." action={<button className="primary-action" type="button" onClick={() => setShowAdd(true)}><UserPlus size={17} />Add operator</button>} />
       <div className="mini-kpi-grid three">
-        <MiniKpi label="Total operators" value={String(snapshot.operators.length)} detail="Across three plants" icon={Users} />
-        <MiniKpi label="Active now" value={String(snapshot.operators.filter((item) => item.status === "Active").length)} detail="Available for scheduling" icon={UserCheck} tone="green" />
+        <MiniKpi label="Total operators" value={String(activeOperators.length)} detail="Active and off-shift operators" icon={Users} />
+        <MiniKpi label="Active now" value={String(activeOperators.filter((item) => item.status === "Active").length)} detail="Available for scheduling" icon={UserCheck} tone="green" />
         <MiniKpi label="Level 3 skilled" value={String(snapshot.operators.filter((item) => item.skill_level === "L3").length)} detail="Advanced machine operators" icon={BadgeCheck} tone="violet" />
       </div>
       <section className="panel data-panel">
         <div className="table-toolbar"><label className="search-control"><Search size={16} /><input placeholder="Search name or employee code" value={search} onChange={(event) => setSearch(event.target.value)} /></label><span>{operators.length} operators</span></div>
         <div className="data-table operators-table" role="table" aria-label="Operators">
-          <div className="data-table-head" role="row"><span>Operator</span><span>Employee ID</span><span>Plant</span><span>Shift</span><span>Skill</span><span>Status</span><span>Action</span></div>
+          <div className="data-table-head" role="row"><span>Operator</span><span>Employee ID</span><span>Plant</span><span>Shift</span><span>Skill</span><span>Status</span><span>Management</span></div>
           {operators.map((operator) => (
-            <div className="data-table-row" role="row" key={operator.id}><span className="person-cell"><i>{operator.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</i><strong>{operator.name}</strong></span><span>{operator.employee_code}</span><span>{operator.plant}</span><span>{operator.shift}</span><span><b className="skill-badge">{operator.skill_level}</b></span><span><i className={`table-status ${statusClass(operator.status)}`}>{operator.status}</i></span><span><button className="table-action" type="button" onClick={() => void toggleStatus(operator)}>{operator.status === "Active" ? "Set off shift" : "Activate"}</button></span></div>
+            <div className="data-table-row" role="row" key={operator.id}><span className="person-cell"><i>{operator.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</i><strong>{operator.name}</strong></span><span>{operator.employee_code}</span><span>{operator.plant}</span><span>{operator.shift}</span><span><b className="skill-badge">{operator.skill_level}</b></span><span><i className={`table-status ${statusClass(operator.status)}`}>{operator.status}</i></span><span><button className="table-action" type="button" onClick={() => void removeOperator(operator)} aria-label={`Remove ${operator.name}`}><Trash2 size={14} /> Remove operator</button></span></div>
           ))}
         </div>
       </section>
