@@ -7,6 +7,7 @@ import {
   enrollOperatorFace,
   getFaceEnrollmentStatuses,
   getOperationsSnapshot,
+  getProductionEntryAudit,
   deleteKiosk,
   registerKiosk,
   regenerateKioskRegistrationCode,
@@ -37,7 +38,13 @@ async function requireApplicationUser(request: Request) {
 export async function GET(request: Request) {
   try {
     const applicationUser = await requireApplicationUser(request);
-    const date = new URL(request.url).searchParams.get("date") ?? undefined;
+    const url = new URL(request.url);
+    const auditEntryId = url.searchParams.get("auditEntryId");
+    if (auditEntryId) {
+      if (applicationUser.role !== "Supervisor") return Response.json({ error: "Supervisor authorization is required" }, { status: 403 });
+      return Response.json({ audit: await getProductionEntryAudit(auditEntryId) });
+    }
+    const date = url.searchParams.get("date") ?? undefined;
     const snapshot = await getOperationsSnapshot(date);
     return Response.json({
       ...snapshot,
