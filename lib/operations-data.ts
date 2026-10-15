@@ -1278,6 +1278,24 @@ export async function createProductionEntry(input: Record<string, unknown>) {
   return { entryCode, duplicate: false };
 }
 
+export async function getProductionEntryAudit(entryIdValue: unknown) {
+  await ensureSchema();
+  const entryId = Number(entryIdValue);
+  if (!Number.isInteger(entryId) || entryId <= 0) throw new Error("A valid production entry ID is required");
+  const db = await getDatabase();
+  const result = await db.prepare(
+    "SELECT id, entry_id, changed_by, changed_at, before_json, after_json FROM production_entry_audit WHERE entry_id = ? ORDER BY changed_at DESC, id DESC",
+  ).bind(entryId).all();
+  return result.results.map((row: Record<string, unknown>) => ({
+    id: row.id,
+    entry_id: row.entry_id,
+    changed_by: row.changed_by,
+    changed_at: row.changed_at,
+    before: JSON.parse(String(row.before_json ?? "{}")),
+    after: JSON.parse(String(row.after_json ?? "{}")),
+  }));
+}
+
 export async function updateProductionEntry(input: Record<string, unknown>, changedBy: string) {
   await ensureSchema();
   const db = await getDatabase();
