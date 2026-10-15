@@ -16,6 +16,7 @@ import {
   syncKiosk,
   updateMachineStatus,
   updateOperatorStatus,
+  updateProductionEntry,
   updateSupervisorStatus,
   deleteSupervisor,
 } from "../../../lib/operations-data";
@@ -78,6 +79,9 @@ export async function POST(request: Request) {
         break;
       case "updateOperatorStatus":
         await updateOperatorStatus(payload);
+        break;
+      case "updateProductionEntry":
+        result = await updateProductionEntry(payload, applicationUser.name || applicationUser.email);
         break;
       case "addSupervisor":
         result = await addSupervisor(payload);
