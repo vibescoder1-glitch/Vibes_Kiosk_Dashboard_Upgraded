@@ -106,6 +106,18 @@ async function ensureSchema() {
         )`,
       ).run();
       await db.prepare("CREATE INDEX IF NOT EXISTS supervisors_plant_idx ON supervisors (plant)").run();
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS production_entry_audit (
+          id BIGSERIAL PRIMARY KEY,
+          entry_id BIGINT NOT NULL,
+          changed_by VARCHAR(191) NOT NULL,
+          changed_at VARCHAR(32) NOT NULL,
+          before_json TEXT NOT NULL,
+          after_json TEXT NOT NULL
+        )
+      `).run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS production_entry_audit_entry_idx ON production_entry_audit (entry_id, changed_at)").run();
+
       // Remove only the legacy demo production rows created by the old seed routine.
       // Real kiosk entries use android-* client references (or a kiosk device id) and are untouched.
       await db.prepare("DELETE FROM production_entries WHERE client_ref LIKE 'seed-%'").run();
@@ -1264,6 +1276,58 @@ export async function createProductionEntry(input: Record<string, unknown>) {
   await db.batch(statements);
 
   return { entryCode, duplicate: false };
+}
+
+export async function updateProductionEntry(input: Record<string, unknown>, changedBy: string) {
+  await ensureSchema();
+  const db = await getDatabase();
+  const entryId = Number(input.entryId);
+  if (!Number.isInteger(entryId) || entryId <= 0) throw new Error("A valid production entry ID is required");
+  const before = await db.prepare("SELECT * FROM production_entries WHERE id = ?").bind(entryId).first<Record<string, unknown>>();
+  if (!before) throw new Error("Production entry was not found");
+
+  const numberValue = (key: string, fallback: unknown, max = Number.MAX_SAFE_INTEGER) => {
+    const value = Number(input[key] ?? fallback ?? 0);
+    if (!Number.isFinite(value) || value < 0) throw new Error(`${key} must be zero or greater`);
+    return Math.min(max, value);
+  };
+  const updated = {
+    colour: String(input.colour ?? before.colour ?? "").trim(),
+    batch_no: String(input.batchNo ?? before.batch_no ?? "").trim(),
+    shot_count: numberValue("shotCount", before.shot_count),
+    actual_weight_grams: numberValue("actualWeightGrams", before.actual_weight_grams),
+    running_cavities: numberValue("runningCavities", before.running_cavities),
+    operator_hours: numberValue("operatorHours", before.operator_hours, 24),
+    ok_qty: numberValue("okQty", before.ok_qty),
+    rejection_qty: numberValue("rejectionQty", before.rejection_qty),
+    scrap_qty: numberValue("scrapQty", before.scrap_qty),
+    downtime_minutes: numberValue("downtimeMinutes", before.downtime_minutes),
+    downtime_reason: String(input.downtimeReason ?? before.downtime_reason ?? "").trim(),
+    remarks: String(input.remarks ?? before.remarks ?? "").trim(),
+    compound_received_kg: numberValue("compoundReceivedKg", before.compound_received_kg),
+    compound_used_kg: numberValue("compoundUsedKg", before.compound_used_kg),
+    compound_balance_kg: numberValue("compoundBalanceKg", before.compound_balance_kg),
+  };
+  if (!updated.batch_no) throw new Error("Batch number is required");
+  const changedAt = nowIso();
+  const after = { ...before, ...updated };
+  await db.batch([
+    db.prepare(
+      "UPDATE production_entries SET colour = ?, batch_no = ?, shot_count = ?, actual_weight_grams = ?, running_cavities = ?, operator_hours = ?, ok_qty = ?, rejection_qty = ?, scrap_qty = ?, downtime_minutes = ?, downtime_reason = ?, remarks = ?, compound_received_kg = ?, compound_used_kg = ?, compound_balance_kg = ? WHERE id = ?",
+    ).bind(
+      updated.colour, updated.batch_no, updated.shot_count, updated.actual_weight_grams,
+      updated.running_cavities, updated.operator_hours, updated.ok_qty, updated.rejection_qty,
+      updated.scrap_qty, updated.downtime_minutes, updated.downtime_reason, updated.remarks,
+      updated.compound_received_kg, updated.compound_used_kg, updated.compound_balance_kg, entryId,
+    ),
+    db.prepare(
+      "INSERT INTO production_entry_audit (entry_id, changed_by, changed_at, before_json, after_json) VALUES (?, ?, ?, ?, ?)",
+    ).bind(entryId, String(changedBy || "Supervisor"), changedAt, JSON.stringify(before), JSON.stringify(after)),
+    db.prepare(
+      "UPDATE machines SET output_today = (SELECT COALESCE(SUM(ok_qty), 0) FROM production_entries WHERE machine_id = ? AND created_at LIKE ?), last_updated = ? WHERE id = ?",
+    ).bind(String(before.machine_id), `${todayIso()}%`, changedAt, String(before.machine_id)),
+  ]);
+  return { ok: true, entryId, changedAt };
 }
 
 async function validateTaskReferences(db: OperationsDatabase, plantValue: unknown, machineIdValue: unknown, operatorIdValue?: unknown) {
