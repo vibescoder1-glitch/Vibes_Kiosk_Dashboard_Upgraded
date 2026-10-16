@@ -7,6 +7,7 @@ import {
   enrollOperatorFace,
   getFaceEnrollmentStatuses,
   getOperationsSnapshot,
+  getProductionEntryAudit,
   deleteKiosk,
   registerKiosk,
   regenerateKioskRegistrationCode,
@@ -16,6 +17,7 @@ import {
   syncKiosk,
   updateMachineStatus,
   updateOperatorStatus,
+  updateProductionEntry,
   updateSupervisorStatus,
   deleteSupervisor,
 } from "../../../lib/operations-data";
@@ -36,7 +38,13 @@ async function requireApplicationUser(request: Request) {
 export async function GET(request: Request) {
   try {
     const applicationUser = await requireApplicationUser(request);
-    const date = new URL(request.url).searchParams.get("date") ?? undefined;
+    const url = new URL(request.url);
+    const auditEntryId = url.searchParams.get("auditEntryId");
+    if (auditEntryId) {
+      if (!["Supervisor", "Manager"].includes(applicationUser.role)) return Response.json({ error: "Manager or Supervisor authorization is required" }, { status: 403 });
+      return Response.json({ audit: await getProductionEntryAudit(auditEntryId) });
+    }
+    const date = url.searchParams.get("date") ?? undefined;
     const snapshot = await getOperationsSnapshot(date);
     return Response.json({
       ...snapshot,
@@ -56,8 +64,8 @@ export async function POST(request: Request) {
     const applicationUser = await requireApplicationUser(request);
     const payload = (await request.json()) as Record<string, unknown>;
     let result: unknown = { ok: true };
-    if (applicationUser.role !== "Supervisor") {
-      return Response.json({ error: "Supervisor authorization is required" }, { status: 403 });
+    if (!["Supervisor", "Manager"].includes(applicationUser.role)) {
+      return Response.json({ error: "Manager or Supervisor authorization is required" }, { status: 403 });
     }
 
     switch (payload.action) {
@@ -78,6 +86,9 @@ export async function POST(request: Request) {
         break;
       case "updateOperatorStatus":
         await updateOperatorStatus(payload);
+        break;
+      case "updateProductionEntry":
+        result = await updateProductionEntry(payload, applicationUser.name || applicationUser.email);
         break;
       case "addSupervisor":
         result = await addSupervisor(payload);
