@@ -517,6 +517,7 @@ export function HistoryView({ snapshot, plantFilter, onAction, notify }: Pick<Sh
   useEffect(() => {
     if (!selectedEntry || editingEntry) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- expose loading state while the audit request is in flight.
     setAuditLoading(true);
     fetch(`/api/operations?auditEntryId=${selectedEntry.id}`)
       .then(async (response) => {
@@ -1173,6 +1174,7 @@ export function OperatorKioskView({
   useEffect(() => {
     const balance = Math.max(0, (Number(form.compoundReceivedKg) || 0) - (Number(form.compoundUsedKg) || 0));
     const next = (form.compoundReceivedKg || form.compoundUsedKg) ? String(balance) : "";
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- keep the persisted form field synchronized with the derived balance.
     setForm((current) => current.compoundBalanceKg === next ? current : { ...current, compoundBalanceKg: next });
   }, [form.compoundReceivedKg, form.compoundUsedKg]);
   const moldProducts: PartMaster[] = selectedMold
@@ -1183,6 +1185,7 @@ export function OperatorKioskView({
   useEffect(() => {
     const product = snapshot.parts.find((part) => normalized(part.part_no) === normalized(form.product));
     const compound = partCompound(product) || (moldCompoundOptions.length === 1 ? moldCompoundOptions[0] : "");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-fill compound when the selected part or mold master changes.
     setForm((current) => current.rubberCompound === compound ? current : { ...current, rubberCompound: compound });
   }, [form.product, snapshot.parts, moldCompoundOptions.join("|")]);
   const suggestedMolds = useMemo(() => {
