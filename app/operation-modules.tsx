@@ -445,7 +445,9 @@ export function OperatorsView({ snapshot, plantFilter, onAction, notify }: Share
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: "", employeeCode: "", plant: plantFilter === "All Plants" ? "Plant 1" : plantFilter, shift: "Morning", skillLevel: "L1" });
-  const operators = snapshot.operators.filter((operator) => {
+  // Archived operators are removed from day-to-day management, while their production history remains intact.
+  const activeOperators = snapshot.operators.filter((operator) => operator.status !== "Archived");
+  const operators = activeOperators.filter((operator) => {
     const matchesPlant = plantFilter === "All Plants" || operator.plant === plantFilter;
     const query = search.trim().toLowerCase();
     return matchesPlant && (!query || `${operator.name} ${operator.employee_code}`.toLowerCase().includes(query));
@@ -462,26 +464,29 @@ export function OperatorsView({ snapshot, plantFilter, onAction, notify }: Share
     } finally { setSaving(false); }
   }
 
-  async function toggleStatus(operator: Operator) {
-    const status = operator.status === "Active" ? "Off Shift" : "Active";
-    await onAction({ action: "updateOperatorStatus", operatorId: operator.id, status });
-    notify(`${operator.name} marked ${status.toLowerCase()}`);
+  async function removeOperator(operator: Operator) {
+    const confirmed = window.confirm(
+      `Remove ${operator.name} from the active operator list? Existing production history will be preserved.`,
+    );
+    if (!confirmed) return;
+    await onAction({ action: "updateOperatorStatus", operatorId: operator.id, status: "Archived" });
+    notify(`${operator.name} removed from active operators. Production history is preserved.`);
   }
 
   return (
     <div className="view-stack">
       <ModuleHeader eyebrow="Workforce management" title="Operators" description="Manage operator availability, plant allocation, shift and skill level." action={<button className="primary-action" type="button" onClick={() => setShowAdd(true)}><UserPlus size={17} />Add operator</button>} />
       <div className="mini-kpi-grid three">
-        <MiniKpi label="Total operators" value={String(snapshot.operators.length)} detail="Across three plants" icon={Users} />
-        <MiniKpi label="Active now" value={String(snapshot.operators.filter((item) => item.status === "Active").length)} detail="Available for scheduling" icon={UserCheck} tone="green" />
+        <MiniKpi label="Total operators" value={String(activeOperators.length)} detail="Active and off-shift operators" icon={Users} />
+        <MiniKpi label="Active now" value={String(activeOperators.filter((item) => item.status === "Active").length)} detail="Available for scheduling" icon={UserCheck} tone="green" />
         <MiniKpi label="Level 3 skilled" value={String(snapshot.operators.filter((item) => item.skill_level === "L3").length)} detail="Advanced machine operators" icon={BadgeCheck} tone="violet" />
       </div>
       <section className="panel data-panel">
         <div className="table-toolbar"><label className="search-control"><Search size={16} /><input placeholder="Search name or employee code" value={search} onChange={(event) => setSearch(event.target.value)} /></label><span>{operators.length} operators</span></div>
         <div className="data-table operators-table" role="table" aria-label="Operators">
-          <div className="data-table-head" role="row"><span>Operator</span><span>Employee ID</span><span>Plant</span><span>Shift</span><span>Skill</span><span>Status</span><span>Action</span></div>
+          <div className="data-table-head" role="row"><span>Operator</span><span>Employee ID</span><span>Plant</span><span>Shift</span><span>Skill</span><span>Status</span><span>Management</span></div>
           {operators.map((operator) => (
-            <div className="data-table-row" role="row" key={operator.id}><span className="person-cell"><i>{operator.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</i><strong>{operator.name}</strong></span><span>{operator.employee_code}</span><span>{operator.plant}</span><span>{operator.shift}</span><span><b className="skill-badge">{operator.skill_level}</b></span><span><i className={`table-status ${statusClass(operator.status)}`}>{operator.status}</i></span><span><button className="table-action" type="button" onClick={() => void toggleStatus(operator)}>{operator.status === "Active" ? "Set off shift" : "Activate"}</button></span></div>
+            <div className="data-table-row" role="row" key={operator.id}><span className="person-cell"><i>{operator.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</i><strong>{operator.name}</strong></span><span>{operator.employee_code}</span><span>{operator.plant}</span><span>{operator.shift}</span><span><b className="skill-badge">{operator.skill_level}</b></span><span><i className={`table-status ${statusClass(operator.status)}`}>{operator.status}</i></span><span><button className="table-action" type="button" onClick={() => void removeOperator(operator)} aria-label={`Remove ${operator.name}`}><Trash2 size={14} /> Remove operator</button></span></div>
           ))}
         </div>
       </section>
@@ -500,16 +505,73 @@ export function OperatorsView({ snapshot, plantFilter, onAction, notify }: Share
   );
 }
 
-export function HistoryView({ snapshot, plantFilter }: Pick<SharedProps, "snapshot" | "plantFilter">) {
+export function HistoryView({ snapshot, plantFilter, onAction, notify }: Pick<SharedProps, "snapshot" | "plantFilter" | "onAction" | "notify">) {
   const [search, setSearch] = useState("");
   const [shift, setShift] = useState("All Shifts");
   const [selectedEntry, setSelectedEntry] = useState<ProductionEntry | null>(null);
+  const [editingEntry, setEditingEntry] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editForm, setEditForm] = useState<Record<string, string>>({});
+  const [auditRows, setAuditRows] = useState<Array<{id: number; changed_by: string; changed_at: string; before: Record<string, unknown>; after: Record<string, unknown>}>>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  useEffect(() => {
+    if (!selectedEntry || editingEntry) return;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- expose loading state while the audit request is in flight.
+    setAuditLoading(true);
+    fetch(`/api/operations?auditEntryId=${selectedEntry.id}`)
+      .then(async (response) => {
+        const data = await response.json() as { audit?: typeof auditRows; error?: string };
+        if (!response.ok) throw new Error(data.error ?? "Could not load audit history");
+        if (!cancelled) setAuditRows(data.audit ?? []);
+      })
+      .catch(() => { if (!cancelled) setAuditRows([]); })
+      .finally(() => { if (!cancelled) setAuditLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedEntry?.id, editingEntry]);
   const entries = snapshot.entries.filter((entry) => {
     const matchesPlant = plantFilter === "All Plants" || entry.plant === plantFilter;
     const matchesShift = shift === "All Shifts" || entry.shift === shift;
     const query = search.trim().toLowerCase();
     return matchesPlant && matchesShift && (!query || `${entry.entry_code} ${entry.operator_name} ${entry.machine_no} ${entry.product} ${entry.mold_no} ${entry.colour} ${entry.batch_no}`.toLowerCase().includes(query));
   });
+
+  function beginEdit(entry: ProductionEntry) {
+    setEditForm({
+      colour: entry.colour ?? "",
+      batchNo: entry.batch_no ?? "",
+      shotCount: String(entry.shot_count ?? 0),
+      actualWeightGrams: String(entry.actual_weight_grams ?? 0),
+      runningCavities: String(entry.running_cavities ?? 0),
+      operatorHours: String(entry.operator_hours ?? 8),
+      okQty: String(entry.ok_qty ?? 0),
+      rejectionQty: String(entry.rejection_qty ?? 0),
+      scrapQty: String(entry.scrap_qty ?? 0),
+      downtimeMinutes: String(entry.downtime_minutes ?? 0),
+      downtimeReason: entry.downtime_reason ?? "",
+      remarks: entry.remarks ?? "",
+      compoundReceivedKg: String(entry.compound_received_kg ?? 0),
+      compoundUsedKg: String(entry.compound_used_kg ?? 0),
+      compoundBalanceKg: String(entry.compound_balance_kg ?? 0),
+    });
+    setEditingEntry(true);
+  }
+
+  async function saveEdit(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedEntry) return;
+    setSavingEdit(true);
+    try {
+      await onAction({ action: "updateProductionEntry", entryId: selectedEntry.id, ...editForm });
+      notify(`Production entry ${selectedEntry.entry_code} updated. Reports will use the corrected saved values.`);
+      setEditingEntry(false);
+      setSelectedEntry(null);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Could not update production entry");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
 
   return (
     <div className="view-stack">
@@ -518,7 +580,28 @@ export function HistoryView({ snapshot, plantFilter }: Pick<SharedProps, "snapsh
         <div className="table-toolbar"><label className="search-control"><Search size={16} /><input placeholder="Search entry, operator, product, mold, colour or batch" value={search} onChange={(event) => setSearch(event.target.value)} /></label><label className="small-select"><ListFilter size={15} /><select value={shift} onChange={(event) => setShift(event.target.value)}><option>All Shifts</option>{SHIFTS.map((item) => <option key={item}>{item}</option>)}</select></label><span>{entries.length} entries</span></div>
         {entries.length ? <div className="data-table history-table" role="table" aria-label="Production history"><div className="data-table-head" role="row"><span>Entry</span><span>Date & time</span><span>Plant / Machine</span><span>Operator</span><span>Product / Batch</span><span>OK</span><span>Rejected</span><span>Hours</span><span>Source</span></div>{entries.map((entry) => <button className="data-table-row clickable" role="row" type="button" key={entry.id} onClick={() => setSelectedEntry(entry)}><span className="strong-cell"><History size={15} />{entry.entry_code}</span><span>{formatDate(entry.created_at, true)}</span><span>{entry.plant} · {entry.machine_no}</span><span>{entry.operator_name}</span><span>{entry.product}<small>{entry.colour ? `${entry.colour} · ` : ""}Batch {entry.batch_no}</small></span><span className="positive-number">{formatNumber(entry.ok_qty)}</span><span className={entry.rejection_qty > 0 ? "negative-number" : "positive-number"}>{entry.rejection_qty}</span><span>{Number(entry.operator_hours ?? 8).toFixed(2)} h</span><span><i className="source-badge">{entry.synced_from}</i></span></button>)}</div> : <EmptyState title="No matching entries" detail="Try a different operator, batch, shift or plant filter." />}
       </section>
-      {selectedEntry ? <Modal title={selectedEntry.entry_code} onClose={() => setSelectedEntry(null)} wide><div className="entry-detail"><div className="entry-hero"><CheckCircle2 size={30} /><div><strong>Production entry synced</strong><span>{formatDate(selectedEntry.created_at, true)} · {selectedEntry.synced_from}</span></div></div><div className="detail-grid four"><div><small>Plant / Machine</small><strong>{selectedEntry.plant} · {selectedEntry.machine_no}</strong></div><div><small>Operator</small><strong>{selectedEntry.operator_name}</strong></div><div><small>Shift</small><strong>{selectedEntry.shift}</strong></div><div><small>Product</small><strong>{selectedEntry.product}</strong></div><div><small>Mold number</small><strong>{selectedEntry.mold_no}</strong></div><div><small>Colour</small><strong>{selectedEntry.colour || "Not specified"}</strong></div><div><small>Rubber Compound</small><strong>{selectedEntry.rubber_compound || "Not mapped"}</strong></div><div><small>Compound Received / Used / Balance</small><strong>{selectedEntry.compound_received_kg ?? 0} / {selectedEntry.compound_used_kg ?? 0} / {selectedEntry.compound_balance_kg ?? 0} kg</strong></div><div><small>Batch number</small><strong>{selectedEntry.batch_no}</strong></div><div><small>Number of shots</small><strong>{formatNumber(selectedEntry.shot_count || 0)}</strong></div><div><small>Actual weight</small><strong>{Number(selectedEntry.actual_weight_grams || 0).toFixed(1)} {selectedEntry.weight_unit === "count" ? "count" : "g"}</strong></div><div><small>Running cavities</small><strong>{formatNumber(selectedEntry.running_cavities || 0)}</strong></div><div><small>Operator hours</small><strong>{Number(selectedEntry.operator_hours ?? 8).toFixed(2)} hours</strong></div><div><small>OK quantity</small><strong className="positive-number">{formatNumber(selectedEntry.ok_qty)}</strong></div><div><small>Rejected / Scrap</small><strong>{selectedEntry.rejection_qty} / {selectedEntry.scrap_qty}</strong></div><div><small>Rejection rate</small><strong>{((Number(selectedEntry.rejection_qty) / Math.max(1, Number(selectedEntry.ok_qty) + Number(selectedEntry.rejection_qty) + Number(selectedEntry.scrap_qty))) * 100).toFixed(1)}%</strong></div><div><small>Downtime</small><strong>{selectedEntry.downtime_minutes} minutes</strong></div><div><small>Reason</small><strong>{selectedEntry.downtime_reason || "None"}</strong></div></div>{selectedEntry.remarks ? <div className="remark-box"><small>Remarks</small><p>{selectedEntry.remarks}</p></div> : null}</div></Modal> : null}
+      {selectedEntry ? <Modal title={selectedEntry.entry_code} onClose={() => setSelectedEntry(null)} wide><div className="entry-detail"><div className="entry-hero"><CheckCircle2 size={30} /><div><strong>Production entry synced</strong><span>{formatDate(selectedEntry.created_at, true)} · {selectedEntry.synced_from}</span></div></div><div className="detail-grid four"><div><small>Plant / Machine</small><strong>{selectedEntry.plant} · {selectedEntry.machine_no}</strong></div><div><small>Operator</small><strong>{selectedEntry.operator_name}</strong></div><div><small>Shift</small><strong>{selectedEntry.shift}</strong></div><div><small>Product</small><strong>{selectedEntry.product}</strong></div><div><small>Mold number</small><strong>{selectedEntry.mold_no}</strong></div><div><small>Colour</small><strong>{selectedEntry.colour || "Not specified"}</strong></div><div><small>Rubber Compound</small><strong>{selectedEntry.rubber_compound || "Not mapped"}</strong></div><div><small>Compound Received / Used / Balance</small><strong>{selectedEntry.compound_received_kg ?? 0} / {selectedEntry.compound_used_kg ?? 0} / {selectedEntry.compound_balance_kg ?? 0} kg</strong></div><div><small>Batch number</small><strong>{selectedEntry.batch_no}</strong></div><div><small>Number of shots</small><strong>{formatNumber(selectedEntry.shot_count || 0)}</strong></div><div><small>Actual weight</small><strong>{Number(selectedEntry.actual_weight_grams || 0).toFixed(1)} {selectedEntry.weight_unit === "count" ? "count" : "g"}</strong></div><div><small>Running cavities</small><strong>{formatNumber(selectedEntry.running_cavities || 0)}</strong></div><div><small>Operator hours</small><strong>{Number(selectedEntry.operator_hours ?? 8).toFixed(2)} hours</strong></div><div><small>OK quantity</small><strong className="positive-number">{formatNumber(selectedEntry.ok_qty)}</strong></div><div><small>Rejected / Scrap</small><strong>{selectedEntry.rejection_qty} / {selectedEntry.scrap_qty}</strong></div><div><small>Rejection rate</small><strong>{((Number(selectedEntry.rejection_qty) / Math.max(1, Number(selectedEntry.ok_qty) + Number(selectedEntry.rejection_qty) + Number(selectedEntry.scrap_qty))) * 100).toFixed(1)}%</strong></div><div><small>Downtime</small><strong>{selectedEntry.downtime_minutes} minutes</strong></div><div><small>Reason</small><strong>{selectedEntry.downtime_reason || "None"}</strong></div></div>{selectedEntry.remarks ? <div className="remark-box"><small>Remarks</small><p>{selectedEntry.remarks}</p></div> : null}<section className="remark-box"><small>Correction audit history</small>{auditLoading ? <p>Loading audit records…</p> : auditRows.length ? auditRows.map((audit) => <div key={audit.id} className="audit-record"><p><strong>{audit.changed_by}</strong> · {formatDate(audit.changed_at, true)}</p><ul>{Object.keys(audit.after).filter((key) => JSON.stringify(audit.before[key]) !== JSON.stringify(audit.after[key]) && !["id", "created_at"].includes(key)).map((key) => <li key={key}><strong>{key.replaceAll("_", " ")}:</strong> {String(audit.before[key] ?? "—")} → {String(audit.after[key] ?? "—")}</li>)}</ul></div>) : <p>No corrections have been recorded for this entry.</p>}</section><div className="modal-actions"><button className="secondary-action" type="button" onClick={() => beginEdit(selectedEntry)}><Pencil size={15} /> Edit entry</button></div></div></Modal> : null}
+      {selectedEntry && editingEntry ? <Modal title={`Edit ${selectedEntry.entry_code}`} onClose={() => setEditingEntry(false)} wide><form className="form-stack" onSubmit={saveEdit}>
+        <p>Corrections are saved to the database and recorded in the audit log with the signed-in supervisor.</p>
+        <div className="form-grid two">
+          <label className="form-field"><span>Batch number</span><input required value={editForm.batchNo ?? ""} onChange={(e) => setEditForm(v => ({...v,batchNo:e.target.value}))} /></label>
+          <label className="form-field"><span>Colour</span><input value={editForm.colour ?? ""} onChange={(e) => setEditForm(v => ({...v,colour:e.target.value}))} /></label>
+          <label className="form-field"><span>Shot count</span><input type="number" min="0" step="1" value={editForm.shotCount ?? "0"} onChange={(e) => setEditForm(v => ({...v,shotCount:e.target.value}))} /></label>
+          <label className="form-field"><span>Actual weight (g)</span><input type="number" min="0" step="0.1" value={editForm.actualWeightGrams ?? "0"} onChange={(e) => setEditForm(v => ({...v,actualWeightGrams:e.target.value}))} /></label>
+          <label className="form-field"><span>Running cavities</span><input type="number" min="0" step="1" value={editForm.runningCavities ?? "0"} onChange={(e) => setEditForm(v => ({...v,runningCavities:e.target.value}))} /></label>
+          <label className="form-field"><span>Operator hours</span><input type="number" min="0" max="24" step="0.25" value={editForm.operatorHours ?? "8"} onChange={(e) => setEditForm(v => ({...v,operatorHours:e.target.value}))} /></label>
+          <label className="form-field"><span>OK quantity</span><input type="number" min="0" step="1" value={editForm.okQty ?? "0"} onChange={(e) => setEditForm(v => ({...v,okQty:e.target.value}))} /></label>
+          <label className="form-field"><span>Rejected quantity</span><input type="number" min="0" step="1" value={editForm.rejectionQty ?? "0"} onChange={(e) => setEditForm(v => ({...v,rejectionQty:e.target.value}))} /></label>
+          <label className="form-field"><span>Scrap quantity</span><input type="number" min="0" step="1" value={editForm.scrapQty ?? "0"} onChange={(e) => setEditForm(v => ({...v,scrapQty:e.target.value}))} /></label>
+          <label className="form-field"><span>Downtime (minutes)</span><input type="number" min="0" step="1" value={editForm.downtimeMinutes ?? "0"} onChange={(e) => setEditForm(v => ({...v,downtimeMinutes:e.target.value}))} /></label>
+          <label className="form-field"><span>Compound received (kg)</span><input type="number" min="0" step="0.001" value={editForm.compoundReceivedKg ?? "0"} onChange={(e) => setEditForm(v => ({...v,compoundReceivedKg:e.target.value}))} /></label>
+          <label className="form-field"><span>Compound used (kg)</span><input type="number" min="0" step="0.001" value={editForm.compoundUsedKg ?? "0"} onChange={(e) => setEditForm(v => ({...v,compoundUsedKg:e.target.value}))} /></label>
+          <label className="form-field"><span>Compound balance (kg)</span><input type="number" min="0" step="0.001" value={editForm.compoundBalanceKg ?? "0"} onChange={(e) => setEditForm(v => ({...v,compoundBalanceKg:e.target.value}))} /></label>
+          <label className="form-field"><span>Downtime reason</span><input value={editForm.downtimeReason ?? ""} onChange={(e) => setEditForm(v => ({...v,downtimeReason:e.target.value}))} /></label>
+        </div>
+        <label className="form-field"><span>Remarks</span><textarea rows={3} value={editForm.remarks ?? ""} onChange={(e) => setEditForm(v => ({...v,remarks:e.target.value}))} /></label>
+        <div className="modal-actions"><button className="secondary-action" type="button" onClick={() => setEditingEntry(false)}>Cancel</button><button className="primary-action" type="submit" disabled={savingEdit}>{savingEdit ? <RefreshCw className="spin" size={16} /> : <Check size={16} />}Save correction</button></div>
+      </form></Modal> : null}
     </div>
   );
 }
@@ -1091,6 +1174,7 @@ export function OperatorKioskView({
   useEffect(() => {
     const balance = Math.max(0, (Number(form.compoundReceivedKg) || 0) - (Number(form.compoundUsedKg) || 0));
     const next = (form.compoundReceivedKg || form.compoundUsedKg) ? String(balance) : "";
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- keep the persisted form field synchronized with the derived balance.
     setForm((current) => current.compoundBalanceKg === next ? current : { ...current, compoundBalanceKg: next });
   }, [form.compoundReceivedKg, form.compoundUsedKg]);
   const moldProducts: PartMaster[] = selectedMold
@@ -1101,6 +1185,7 @@ export function OperatorKioskView({
   useEffect(() => {
     const product = snapshot.parts.find((part) => normalized(part.part_no) === normalized(form.product));
     const compound = partCompound(product) || (moldCompoundOptions.length === 1 ? moldCompoundOptions[0] : "");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-fill compound when the selected part or mold master changes.
     setForm((current) => current.rubberCompound === compound ? current : { ...current, rubberCompound: compound });
   }, [form.product, snapshot.parts, moldCompoundOptions.join("|")]);
   const suggestedMolds = useMemo(() => {

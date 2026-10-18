@@ -646,7 +646,7 @@ export default function OperationsDashboard({ userName, userEmail, signOutPath }
       case "Scheduling": return <SchedulingView {...shared} onDateChange={changeScheduleDate} />;
       case "Production Tasks": return <TasksView {...shared} />;
       case "Operators": return <OperatorsView {...shared} />;
-      case "History": return <HistoryView snapshot={snapshot} plantFilter={plantFilter} />;
+      case "History": return <HistoryView {...shared} />;
       case "Reports": return <ReportsView snapshot={snapshot} plantFilter={plantFilter} />;
       case "Kiosk Devices": return <KioskDevicesView {...shared} />;
       case "Company Data": return <CompanyDataView {...shared} />;
