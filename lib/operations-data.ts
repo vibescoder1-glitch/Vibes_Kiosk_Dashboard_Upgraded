@@ -1209,9 +1209,13 @@ export async function saveSchedule(input: Record<string, unknown>) {
 export async function createProductionEntry(input: Record<string, unknown>) {
   await ensureSchema();
   const db = await getDatabase();
-  const required = ["plant", "machineId", "operatorId", "shift", "product", "moldNo", "batchNo"];
+  const isSampleMoldTrial = String(input.product ?? "").trim() === "Sample Mold Trial";
+  const required = ["plant", "machineId", "operatorId", "shift", "product", "batchNo"];
   for (const field of required) {
     if (!String(input[field] ?? "").trim()) throw new Error(`${field} is required`);
+  }
+  if (!isSampleMoldTrial && !String(input.moldNo ?? "").trim()) {
+    throw new Error("moldNo is required for regular production entries");
   }
 
   const clientRef = String(input.clientRef ?? crypto.randomUUID());
