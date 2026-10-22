@@ -16,7 +16,11 @@ function rowsFor(sheet: XLSX.WorkSheet, headerNeedle: string) {
 function val(row: Record<string, unknown>, ...names: string[]) { for (const name of names) { const v = row[key(name)]; if (v !== null && v !== undefined && norm(v) !== "") return v; } return null; }
 export async function POST(request: Request) {
   const user = await getRequestCompanyUser(request);
-  if (!user || user.role !== "Manager") return Response.json({ error: "Manager authorization is required" }, { status: 403 });
+  // The current dashboard login is provisioned for Supervisors. Permit both
+  // authenticated Supervisor and Manager accounts to maintain the shared master.
+  if (!user || !["Manager", "Supervisor"].includes(user.role)) {
+    return Response.json({ error: "Supervisor or Manager authorization is required" }, { status: 403 });
+  }
   try {
     const form = await request.formData(); const file = form.get("file");
     if (!(file instanceof File)) return Response.json({ error: "Choose an Excel workbook first" }, { status: 400 });
