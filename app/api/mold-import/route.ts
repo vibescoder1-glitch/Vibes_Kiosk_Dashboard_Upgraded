@@ -14,6 +14,16 @@ function rowsFor(sheet: XLSX.WorkSheet, headerNeedle: string) {
   return rows.slice(headerIndex + 1).map((row, offset) => ({ rowNumber: headerIndex + offset + 2, values: Object.fromEntries(headers.map((header, i) => [header, row[i]])) })).filter(({ values }) => Object.values(values).some((value) => norm(value)));
 }
 function val(row: Record<string, unknown>, ...names: string[]) { for (const name of names) { const v = row[key(name)]; if (v !== null && v !== undefined && norm(v) !== "") return v; } return null; }
+function rowsWithFamily(sheet: XLSX.WorkSheet, headerNeedle: string) {
+  let currentFamily = "";
+  return rowsFor(sheet, headerNeedle).map((row) => {
+    const explicitFamily = norm(val(row.values, "Family"));
+    if (explicitFamily) currentFamily = explicitFamily;
+    // Excel workbooks sometimes use merged Family cells; carry the last
+    // explicit family through following mold/part rows so they are not dropped.
+    return { ...row, values: { ...row.values, family: explicitFamily || currentFamily } };
+  });
+}
 export async function POST(request: Request) {
   const user = await getRequestCompanyUser(request);
   // The current dashboard login is provisioned for Supervisors. Permit both
@@ -30,8 +40,8 @@ export async function POST(request: Request) {
     const partSheet = workbook.Sheets[workbook.SheetNames.find((name) => key(name) === "part") ?? ""];
     const moldSheet = workbook.Sheets[workbook.SheetNames.find((name) => key(name) === "mold") ?? ""];
     if (!partSheet || !moldSheet) return Response.json({ error: "Workbook must contain sheets named 'part' and 'Mold'" }, { status: 400 });
-    const parts = rowsFor(partSheet, "Vibes part no").map(({ rowNumber, values }) => ({ rowNumber, partNo: norm(val(values, "Vibes part no", "Part No", "part_no")), family: norm(val(values, "Family")), description: norm(val(values, "DESCRIPTION", "Description")), commodity: norm(val(values, "Commodity")), insertPartNo: norm(val(values, "Insert Part no")), rubberCompound: norm(val(values, "RUBBER COMPOUND")), rejectionAllowed: num(val(values, "Rejection allowed")), partWeight: num(val(values, "Part Wt.")), inspection: num(val(values, "Inspection")), finalInspectionTarget: num(val(values, "Final Inspection Target")) })).filter((p) => p.partNo);
-    const molds = rowsFor(moldSheet, "Mold no").map(({ rowNumber, values }) => ({ rowNumber, family: norm(val(values, "Family")), moldNo: norm(val(values, "Mold no")), description: norm(val(values, "Vibes description")), cavities: num(val(values, "Cavities")), cycleTime: num(val(values, "Cycle time")), reqTonn: norm(val(values, "Req Tonn")), inspectionTime: num(val(values, "Inspection time")), shotWt: num(val(values, "Shot wt")), sheetWt: num(val(values, "Sheet wt")), flashWt: num(val(values, "flash wt")), shotTarget: num(val(values, "Shot Target")), runningCavities: num(val(values, "Running ok cavities")), inspectionTarget: num(val(values, "INSPECTION TARGET")), oldMoldNo: norm(val(values, "old mold no")), manufacturingYear: norm(val(values, "Manufacturing year")), plant: norm(val(values, "PLANT")), moldMaterial: norm(val(values, "Mold Material")) })).filter((m) => m.moldNo && m.family);
+    const parts = rowsWithFamily(partSheet, "Vibes part no").map(({ rowNumber, values }) => ({ rowNumber, partNo: norm(val(values, "Vibes part no", "Part No", "part_no")), family: norm(val(values, "Family")), description: norm(val(values, "DESCRIPTION", "Description")), commodity: norm(val(values, "Commodity")), insertPartNo: norm(val(values, "Insert Part no")), rubberCompound: norm(val(values, "RUBBER COMPOUND")), rejectionAllowed: num(val(values, "Rejection allowed")), partWeight: num(val(values, "Part Wt.")), inspection: num(val(values, "Inspection")), finalInspectionTarget: num(val(values, "Final Inspection Target")) })).filter((p) => p.partNo);
+    const molds = rowsWithFamily(moldSheet, "Mold no").map(({ rowNumber, values }) => ({ rowNumber, family: norm(val(values, "Family")), moldNo: norm(val(values, "Mold no")), description: norm(val(values, "Vibes description")), cavities: num(val(values, "Cavities")), cycleTime: num(val(values, "Cycle time")), reqTonn: norm(val(values, "Req Tonn")), inspectionTime: num(val(values, "Inspection time")), shotWt: num(val(values, "Shot wt")), sheetWt: num(val(values, "Sheet wt")), flashWt: num(val(values, "flash wt")), shotTarget: num(val(values, "Shot Target")), runningCavities: num(val(values, "Running ok cavities")), inspectionTarget: num(val(values, "INSPECTION TARGET")), oldMoldNo: norm(val(values, "old mold no")), manufacturingYear: norm(val(values, "Manufacturing year")), plant: norm(val(values, "PLANT")), moldMaterial: norm(val(values, "Mold Material")) })).filter((m) => m.moldNo && m.family);
     if (!parts.length || !molds.length) return Response.json({ error: "No valid part or mold records were found. Check the workbook headers and data." }, { status: 400 });
     const warnings: string[] = [];
     const moldCounts = new Map<string, number>(); for (const mold of molds) moldCounts.set(mold.moldNo.toLowerCase(), (moldCounts.get(mold.moldNo.toLowerCase()) ?? 0) + 1);
